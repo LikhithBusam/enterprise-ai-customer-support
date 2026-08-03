@@ -84,30 +84,55 @@ memory schema, agent list) stays as built — do not rewrite from scratch.
 - [x] Simulated tool layer (order, refund, crm, kb_search) + registry dispatch implemented
 - [x] Synthetic ticket dataset (200 tickets, 6 intent clusters) built — TODO: increase phrasing diversity before final experiments, currently template-based with some duplication
 - [x] Stateless baselines (memoryless, static_react) implemented with real LLM calls (NIM), entity extraction, dependency gating (refund blocked on failed order_lookup), proactive rate limiting
-- [x] Full 200-ticket baseline runs across 3 failure rates (0.0, 0.3, 0.7) — DONE for memoryless, static_react, memory_augmented. Results backed up in experiments/results/backup_*/
+- [x] Full 200-ticket baseline runs across 3 failure rates (0.0, 0.3, 0.7) — DONE for memoryless, static_react, memory_augmented. Results backed up in archive/experiment-backups/backup_*/ (relocated from experiments/results/ during the repository cleanup pass)
 - [x] Memory-augmented Planner/Critic implemented (experiments/memory_augmented.py) — retrieves PlanSuccessMemory/ToolFailureMemory, writes back with dependency-order validation (bad plans rejected before write, oracle-label safety preserved)
 - [x] Headline result (FINAL, on corrected dataset — see below): memory_augmented beats both baselines at 0.0 and 0.3 failure rates; converges with memoryless at 0.7 (honest boundary condition to report)
 - [x] Statistical significance testing (chi-square) — p=0.00000 for memory_augmented vs static_react at 0.3 on original dataset, confirmed real. Re-verify on final corrected dataset numbers below before citing in paper.
 - [x] Learning-curve analysis run — NO clear monotonic upward trend found (75-95% bouncing); memory saturates almost immediately (memory_hit ~100% by ticket #2) rather than climbing gradually. Reframe paper claim accordingly — NOT "improves over time," IS "consistently better from early on." This finding directly motivates the memorization-vs-generalization redesign above.
-- [x] Dataset diversity fix applied and verified — regenerated data/synthetic_tickets.jsonl now 200/200 unique messages (was 176/200). Old dataset archived in experiments/results/backup_v1_old_dataset/.
+- [x] Dataset diversity fix applied and verified — regenerated data/synthetic_tickets.jsonl now 200/200 unique messages (was 176/200). Old dataset archived in archive/experiment-backups/backup_v1_old_dataset/.
 - [x] Tool mock-data range bug found and fixed post-dataset-regen: src/tools/order.py's _build_orders() had hardcoded range(1,31) (ORD-1001–1030), but regenerated dataset references up to ORD-1049 — widened to range(1,61). Also fixed a circular import between order.py and registry.py surfaced during the fix. crm.py's range(1,201) confirmed already sufficient for dataset's max CUST-0200.
 - [x] **FINAL three-way comparison, corrected dataset + corrected tools (this is the paper-citable table):**
   | Failure Rate | memoryless | static_react | memory_augmented |
   |---|---|---|---|
-  | 0.0 | 188/200 (94%) | 118/200 (59%) | 194/200 (97%) |
-  | 0.3 | 84/200 (42%) | 102/200 (51%) | 169/200 (84%) |
-  | 0.7 | 91/200 (46%) | 20/200 (10%) | 96/200 (48%) |
+  | 0.0 | 188/200 (94.0%) | 118/200 (59.0%) | 193/200 (96.5%) |
+  | 0.3 | 84/200 (42.0%) | 102/200 (51.0%) | 146/200 (73.0%) |
+  | 0.7 | 91/200 (45.5%) | 20/200 (10.0%) | 96/200 (48.0%) |
   All results deduped, verified unique-200-per-tier, backed up in archive/experiment-backups/backup_*_v3_final/
   (relocated from experiments/results/ during the repository cleanup pass — contents unchanged).
-- [ ] Re-run chi-square significance test on the corrected-dataset numbers above before citing in paper
+
+  **Correction (found and fixed during a documentation integrity audit):** this table previously
+  read 194/200 (97%) and 169/200 (84%) for `memory_augmented` at FR 0.0 and FR 0.3 — both wrong.
+  Verified by directly counting `"resolved": true` lines in `experiments/results/memory_augmented_0.0.jsonl`
+  and `memory_augmented_0.3.jsonl` (193/200 and 146/200 respectively, matching
+  `experiments/results/policy_memory_validation/report.md`'s Table 1 and `paper/results.md`'s
+  Table 1 exactly). The FR=0.7 cell (96/200, 48.0%) was already correct.
+- [ ] Re-run chi-square significance test specifically for `memoryless` vs. `static_react` vs.
+  `memory_augmented` (the three-way comparison above) on these corrected counts before citing in
+  the paper — not yet computed anywhere in the repo. (Policy Memory's own significance tests
+  against all three are already computed and canonical — see
+  `experiments/results/policy_memory_validation/report.md` Table 3.)
 - [ ] Failure-category-conditioned Critic (redesign item 1) — NEXT
 - [ ] Template-abstracted memory write + retrieval-distance stratified eval (redesign item 2) — NEXT
 - [ ] Add LangGraph-ReAct baseline (cheap, closes "did you just reimplement LangGraph" reviewer question) — partial attempt exists (experiments/results/langgraph_react_0.3.jsonl, incomplete/from old dataset, re-run needed)
 - [ ] Escalation Agent + human feedback loop
 - [ ] LangGraph orchestration wiring (current agents are standalone functions, not yet a LangGraph graph — needed for the "multi-agent system" framing to be literally true, not just conceptually)
 - [x] Basic prompt-injection filter on ticket intake (security gap flagged in critique) — `src/agents/intake.py`'s heuristic pattern filter, wired into the production graph (`ENTERPRISE_ARCHITECTURE.md` Phase 5); research-track `experiments/` baselines are unaffected
-- [x] Policy Memory (Contribution 2) research implementation — per `Policy_Memory_Implementation_Plan.md`: `memory/` (new top-level package: `PolicyMemory` schema + upsert-by-`policy_id` Chroma store), `experiments/context_fusion.py` (top-3 Policy + top-2 Failure + top-3 Episodic fusion for the Planner), and `experiments/memory_augmented_v2.py`'s `ENABLE_POLICY_MEMORY`-gated `policy_memory` baseline in `scripts/run_experiment.py`. Research-track only — not wired into `src/` (that's `ENTERPRISE_ARCHITECTURE.md` Phase 6, gated on this baseline's results). Full 200-ticket runs across the 3 failure-rate tiers have not been executed yet — `scripts/analyze_policy_memory.py` is ready to report Resolution Rate / Policy Retrieval Rate / Policy Reuse Rate / Transfer once they are.
-- [ ] Paper draft — single focused claim (see Research Redesign above), not a 20-contribution list
+- [x] Policy Memory (Contribution 2) research implementation — per `Policy_Memory_Implementation_Plan.md`: `memory/` (new top-level package: `PolicyMemory` schema + upsert-by-`policy_id` Chroma store), `experiments/context_fusion.py` (top-3 Policy + top-2 Failure + top-3 Episodic fusion for the Planner), and `experiments/memory_augmented_v2.py`'s `ENABLE_POLICY_MEMORY`-gated `policy_memory` baseline in `scripts/run_experiment.py`. Research-track only — not wired into `src/` (that's `ENTERPRISE_ARCHITECTURE.md` Phase 6, gated on this baseline's results).
+- [x] Policy Memory full 200-ticket evaluation across all 3 failure-rate tiers, **plus a controlled
+  `v2_full` ablation** isolating retrieval source as the only variable (`scripts/v2_full_ablation.py`).
+  **Result: no statistically significant difference in resolution rate between Policy Memory and
+  plain ticket-based (`v2_full`) retrieval at any failure rate** (FR=0.0 p=1.0, FR=0.3 p=0.088,
+  FR=0.7 p=0.263), with the point estimate favoring the simpler `v2_full` baseline at two of three
+  tiers. The bulk of Policy Memory's originally observed advantage over the older, unconditioned
+  `memory_augmented` baseline is attributable to template abstraction (shared by both v2 arms), not
+  to policy-based retrieval specifically. Reported transparently as a null result — see
+  `paper/results.md` (Tables 8–11), `paper/discussion.md`, and `paper/abstract.md` for the full
+  writeup; `scripts/analyze_policy_memory.py` / `scripts/policy_memory_validation.py` compute it.
+- [ ] Paper draft — substantially complete (`paper/final_paper.md`, all sections through Conclusion
+  and References). Remaining before submission: resolve the FR=0.3 `memory_augmented` discrepancy
+  flagged above, re-run the chi-square significance test on the corrected numbers, and the
+  reproducibility items in `paper/future_work.md` (larger sample size, re-run all four arms in one
+  canonical environment — see `paper/reproducibility.md`'s disclosed environment mismatch).
 
 
 

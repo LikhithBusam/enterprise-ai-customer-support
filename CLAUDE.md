@@ -128,6 +128,12 @@ implemented per that plan's design:
   Retrieval Rate, Policy Reuse Rate (fraction of hits where `policy_usage_count_at_use >= 2`), and
   resolution rate conditioned on policy-hit vs. no-hit (the generalization/transfer signal).
   Compares `memoryless`/`static_react`/`memory_augmented`/`policy_memory` per failure rate.
+- **Evaluation is complete**, including a controlled `v2_full` ablation (`scripts/v2_full_ablation.py`)
+  that isolates retrieval source as the only variable between Policy Memory and plain
+  `PlanSuccessMemory` retrieval. Finding: no statistically significant resolution-rate difference
+  at any failure rate — see `paper/results.md` (Tables 8–11) and `paper/discussion.md` for the full
+  writeup, and `AGENTS.md`'s Current Status for the summary and a flagged numeric discrepancy that
+  needs resolving before the paper cites final numbers.
 
 **Tool layer** (`src/tools/`): `registry.py` is a name → handler dispatch table
 (`crm`, `order_lookup`, `refund`, `kb_search`) with a shared `ToolResult` model and a

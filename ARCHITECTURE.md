@@ -2,12 +2,53 @@
 
 This document explains how the system fits together: the frontend, the backend, the memory
 system, the LangGraph orchestration layer, and — the detail that makes this repository unusual —
-why there are **two parallel implementations** of the same agent pipeline (a research track and a
-production track) and why they deliberately do not share runtime code.
+why there are **two parallel implementations** of the same agent pipeline (a Research Track and a
+Production Track) and why they deliberately do not share runtime code.
+
+See also: [README.md](README.md) for the project overview and getting-started steps,
+[DEPLOYMENT.md](DEPLOYMENT.md) for how to run this in production, and
+[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the full annotated folder map.
 
 ---
 
-## 1. The two-track split
+## 1. High-Level System Diagram
+
+```mermaid
+flowchart TD
+    USER["Customer / Support Agent"] --> FE["Support Console (dashboard/)\nReact + Vite SPA"]
+    FE -->|"POST /v1/tickets\nGET /health"| API["FastAPI (src/api/)\nAuth · Rate Limit · Idempotency"]
+    API --> GRAPH["LangGraph StateGraph (src/graph/pipeline.py)\nIntake → Planner → Executor → Critic → Response → Escalation"]
+    GRAPH --> LLM["LLM Provider Gateway (src/core/llm_client.py)\nNVIDIA NIM → Ollama fallback"]
+    GRAPH --> TOOLS["Tool Adapter (src/tools/adapter.py)\nSimulated / Stripe / Zendesk"]
+    GRAPH --> MEMMGR["Memory Manager (src/agents/memory_manager.py)"]
+    MEMMGR --> VSTORE[("ChromaDB\nper-client vector store")]
+```
+
+The LangGraph `StateGraph` is the orchestration hub: each node it runs (Planner, Executor, Critic,
+Response) calls out to the LLM Provider Gateway, the Tool Adapter, and the Memory Manager as
+needed — these are peer subsystems the graph invokes, not a strict linear pipeline. Full breakdown
+of every component below.
+
+---
+
+## 2. Technology Stack
+
+| Category | Technology |
+|---|---|
+| **Frontend** | React 18, TypeScript (strict), Vite, Tailwind CSS v4, shadcn/ui (Radix primitives), TanStack Query + TanStack Table, React Hook Form + Zod, React Router v7, Recharts, React Flow (`@xyflow/react`), MSW (mock service layer) |
+| **Backend** | Python 3.11+, [uv](https://github.com/astral-sh/uv), FastAPI, Uvicorn, Pydantic v2 |
+| **Orchestration** | LangGraph `StateGraph` (Production Track); plain Python functions per baseline (Research Track), plus one partial LangGraph-based ReAct control baseline |
+| **LLM** | NVIDIA NIM (`meta/llama-3.1-8b-instruct` — Planner/Critic), local Ollama (`qwen2.5:3b-instruct` — Intake/Response), Gemini Flash (offline LLM-as-judge only, never in the live pipeline) |
+| **Memory** | Custom `MemoryManager[T]` interface, 5 typed entry schemas (Episodic, Tool-Failure, Plan-Success, Escalation, Policy — research-track), per-client isolated collections |
+| **Database / Vector Store** | ChromaDB, embedded and persistent, one collection per `{client_id}_{suffix}` |
+| **Observability** | OpenTelemetry (spans + metrics, no-op until configured), structured JSON logging |
+| **Research tooling** | Synthetic ticket dataset (200 tickets, 6 intent clusters), `scipy` (χ² significance testing), `matplotlib` / `numpy` (paper figures, not a project dependency) |
+| **Testing** | `pytest`, `ruff` (backend); TypeScript strict mode + `oxlint` (frontend); no dedicated E2E suite yet |
+| **Deployment** | GitHub Actions (`.github/workflows/`) for CI; Vercel/Netlify (frontend static host); Render/Railway/Azure App Service (backend ASGI host) — see [DEPLOYMENT.md](DEPLOYMENT.md) |
+
+---
+
+## 3. The Two-Track Split
 
 | | `experiments/` (Research Track) | `src/` (Production Track) |
 |---|---|---|
@@ -31,7 +72,41 @@ of "what a tool call returns" and "how memory persists" is not duplicated.
 
 ---
 
-## 2. Backend
+## 4. Request Lifecycle
+
+Step-by-step path of a single ticket through the Production Track, from submission to memory
+write:
+
+1. **Customer Request** — the Support Console's New Ticket page (or any API client) submits
+   `POST /v1/tickets`.
+2. **API** (`src/api/`) — `X-API-Key` resolves to a `client_id`; the request is checked against the
+   idempotency cache (a replayed `ticket_id` short-circuits here) and the per-client rate limiter,
+   then handed to `run_ticket()`.
+3. **Intake** — sanitizes the message (heuristic prompt-injection filter), classifies intent,
+   extracts entities. Every downstream node reads the sanitized text, never the raw input.
+4. **Planner** — retrieves relevant memory through the Memory Manager (Episodic + Plan-Success on
+   the Production Track; Policy + Tool-Failure + Episodic via Context Fusion on the Research
+   Track's Policy Memory path), then calls the LLM Provider Gateway to build a tool-call
+   **Execution DAG**.
+5. **Executor** — dispatches each DAG layer's tool calls through the Tool Adapter (simulated, or
+   real Stripe/Zendesk backends).
+6. **Critic / Replanner** — reads only `success` / `data` / `error` off each tool result (never the
+   oracle-only `failure_type`), classifies any failure, and decides resolved vs. replan. On
+   unresolved, loops back to step 4 — up to `MAX_ITERATIONS = 3`.
+7. **Response** — once resolved (or iterations exhausted), the LLM Provider Gateway drafts the
+   customer-facing reply.
+8. **Escalation** — if still unresolved after `MAX_ITERATIONS`, summarizes the ticket for a human
+   agent instead of returning a low-confidence auto-reply.
+9. **Memory Write** — the Memory Manager persists the outcome: Episodic memory always; Plan-Success
+   memory on a successful resolution (template-abstracted, ticket-specific values stripped);
+   Tool-Failure memory on a diagnosed failure — into the per-client Chroma vector store.
+
+See `tests/test_pipeline_integration.py` for the automated coverage of this flow (happy path,
+replan-then-resolve, escalate-after-exhaustion).
+
+---
+
+## 5. Component Responsibilities
 
 ### Agent pipeline (7 agents)
 
@@ -40,22 +115,22 @@ Intake → Planner → Executor → Critic/Replanner ─┬─→ Response → E
                        ↑_______________________ (replan) ┘
 ```
 
-1. **Intake** — classifies ticket intent, extracts entities, runs a heuristic prompt-injection
-   filter on the raw customer message before anything downstream sees it.
-2. **Planner** — builds a tool-call DAG (`list[list[str]]` layers, dependency-ordered). Retrieves
-   from Episodic/Plan-Success (and, on the research track's Contribution 2 path, Policy) memory
-   before planning. Never calls tools directly.
-3. **Executor** — the only agent that calls tools, dispatching through an injected `DispatchFn`
-   so production and research can each supply their own (`SimulatedToolAdapter`/`RealToolAdapter`
-   vs. `ToolRegistry`).
-4. **Critic/Replanner** — reads only `success`/`data`/`error` off a tool result (never the
+1. **Intake Agent** — classifies ticket intent, extracts entities, runs a heuristic
+   prompt-injection filter on the raw customer message before anything downstream sees it.
+2. **Planner Agent** — builds a tool-call Execution DAG (`list[list[str]]` layers,
+   dependency-ordered). Retrieves from Episodic/Plan-Success (and, on the Research Track's Policy
+   Memory path, Policy) memory before planning. Never calls tools directly.
+3. **Executor Agent** — the only agent that calls tools, dispatching through an injected
+   `DispatchFn` so production and research can each supply their own
+   (`SimulatedToolAdapter`/`RealToolAdapter` vs. `ToolRegistry`).
+4. **Critic/Replanner Agent** — reads only `success`/`data`/`error` off a tool result (never the
    oracle-only `failure_type` field), classifies the failure category from observable symptoms,
    and either confirms resolution or triggers a bounded replan (`MAX_ITERATIONS = 3`).
-5. **Memory Manager** — retrieval, write, dedup/reinforcement, and scheduled pruning across every
-   memory store, wrapped so the Planner/Critic never touch `ChromaStore` directly.
-6. **Response** — drafts the customer-facing reply.
-7. **Escalation** — decides human handoff and summarizes for a human agent when the Critic gives
-   up after exhausting replanning attempts.
+5. **Memory Manager Agent** — retrieval, write, dedup/reinforcement, and scheduled pruning across
+   every memory store, wrapped so the Planner/Critic never touch `ChromaStore` directly.
+6. **Response Agent** — drafts the customer-facing reply.
+7. **Escalation Agent** — decides human handoff and summarizes for a human agent when the Critic
+   gives up after exhausting replanning attempts.
 
 ### FastAPI layer (`src/api/`)
 
@@ -71,9 +146,9 @@ Intake → Planner → Executor → Critic/Replanner ─┬─→ Response → E
   limitation (see [ENTERPRISE_ARCHITECTURE.md](ENTERPRISE_ARCHITECTURE.md) §3); a multi-worker
   deployment needs a shared store (Redis token bucket / durable idempotency table) first.
 
-### LLM provider gateway (`src/core/llm_client.py`)
+### LLM Provider Gateway (`src/core/llm_client.py`)
 
-Per-role **ordered fallback chain** of provider/model pairs (e.g. planner/critic try NVIDIA NIM,
+Per-role **ordered fallback chain** of provider/model pairs (e.g. Planner/Critic try NVIDIA NIM,
 then fall back to local Ollama), each gated by its own proactive sliding-window rate limiter and a
 circuit breaker (opens after 3 consecutive failures, half-opens after a 60s cooldown). This
 replaces relying on reactive retry/backoff alone, which caused multi-minute stalls during
@@ -84,7 +159,7 @@ development against NIM's ~40 req/min free-tier ceiling.
 `ToolAdapter` is a one-method interface (`dispatch(tool_name, params) -> ToolResult`) with two
 implementations:
 - **`SimulatedToolAdapter`** (default) — calls the same deterministic simulated handlers used by
-  the research track directly, no failure injection.
+  the Research Track directly, no failure injection.
 - **`RealToolAdapter`** — composes one `ToolBackend` per tool: `CrmBackend`/`OrderBackend`/
   `RefundBackend` call Stripe (Customers / PaymentIntents / Refunds), `KbSearchBackend` calls
   Zendesk Guide's help-center search. Each backend **fails closed** — a `ToolResult(success=False,
@@ -110,7 +185,7 @@ externally-scheduled job (cron/k8s CronJob), not a background thread in the API 
 
 ---
 
-## 3. Memory system
+## 6. Memory System
 
 | Store | Schema (interface contract) | Written by |
 |---|---|---|
@@ -118,7 +193,7 @@ externally-scheduled job (cron/k8s CronJob), not a background thread in the API 
 | `ToolFailureMemory` | `{tool_name, failure_type, context, fix_applied}` | Critic/Replanner on a diagnosed failure |
 | `PlanSuccessMemory` | `{intent_cluster, dag_template, success_rate}` | on success, template-abstracted (ticket-specific values stripped before write) |
 | `EscalationMemory` | `{ticket_id, human_correction, original_response}` | human-feedback loop (not yet wired up) |
-| `PolicyMemory` (research-track, Contribution 2) | `{policy_id, intent_cluster, workflow_template, dependency_graph, tool_constraints, usage_count, ...}` | upserted (not appended) by deterministic `policy_id` |
+| `PolicyMemory` (Research Track, Contribution 2) | `{policy_id, intent_cluster, workflow_template, dependency_graph, tool_constraints, usage_count, ...}` | upserted (not appended) by deterministic `policy_id` |
 
 - **Isolation is per-client by default** — a compliance requirement, not merged across clients
   without explicit sign-off. `ClientStoreRegistry` caches one `ClientStore` (bundling all stores)
@@ -133,18 +208,28 @@ externally-scheduled job (cron/k8s CronJob), not a background thread in the API 
   fresh UUID), because `policy_id` is a deterministic key and the design requires "update the
   matching policy or create a new one." It still reuses the same shared Chroma client and
   collection-naming convention as every other memory type.
-- **Context Fusion** (`experiments/context_fusion.py`) merges top-3 Policy + top-2 Failure + top-3
-  Episodic retrievals into a single `PlanningContext` for the Planner prompt — the mechanism under
-  test for "does policy-based memory generalize better than ticket-based memory."
+- **Context Fusion** (`experiments/context_fusion.py`) merges top-3 Policy + top-2 Tool-Failure +
+  top-3 Episodic retrievals into a single `PlanningContext` for the Planner prompt — the mechanism
+  under test for "does policy-based memory generalize better than ticket-based memory."
+- **Result: a null result, reported transparently.** A controlled ablation (Policy Memory vs.
+  `v2_full` — architecturally identical, differing only in retrieval source) found **no
+  statistically significant resolution-rate difference at any failure rate tested**, with the
+  point estimate favoring the simpler ticket-based baseline at two of three tiers. The bulk of
+  Policy Memory's originally observed advantage over the older `memory_augmented` baseline is
+  attributable to template abstraction (shared by both v2 arms), not to policy-based retrieval
+  itself. See [`paper/results.md`](paper/results.md) (Tables 8–11) and
+  [`paper/discussion.md`](paper/discussion.md) for the full analysis, and
+  [Policy_Memory_Implementation_Plan.md](Policy_Memory_Implementation_Plan.md) for the original
+  design this evaluation tested.
 
 ---
 
-## 4. LangGraph (production orchestration)
+## 7. LangGraph (Production Orchestration)
 
 `src/graph/pipeline.py`'s `build_pipeline()` / `run_ticket()` wires all 7 agents into a LangGraph
 `StateGraph`, porting `experiments/memory_augmented_v2.py`'s best-performing configuration
 (conditioned Critic + template-abstracted memory + tool-reliability scoring — all always-on here,
-where the research track keeps them behind ablation flags).
+where the Research Track keeps them behind ablation flags).
 
 ```
 intake → planner → executor → critic ──(unresolved, < MAX_ITERATIONS)──▶ planner   [loop]
@@ -160,7 +245,7 @@ path, replan-then-resolve, escalate-after-exhaustion). `src/core/dag.py`'s `Exec
 
 ---
 
-## 5. Research track
+## 8. Research Track
 
 `experiments/baselines/` (memoryless, static ReAct, LangGraph-ReAct control) and
 `experiments/memory_augmented.py` / `memory_augmented_v2.py` each expose a self-contained
@@ -180,6 +265,8 @@ Memory) behind its own `ENABLE_POLICY_MEMORY` flag as the `policy_memory` baseli
 appending one JSON record per ticket to `experiments/results/{baseline}_{failure_rate}.jsonl`.
 `scripts/compute_summary.py` / `analyze_results.py` / `analyze_policy_memory.py` post-process
 those results into the resolution-rate, memory-hit, and (for Policy Memory) reuse/transfer tables.
+Historical result snapshots are archived under `archive/experiment-backups/`, not deleted, as the
+recorded provenance for specific paper-cited numbers.
 
 **Critical invariant**: Critic code — in both tracks — must only read `success`/`data`/`error`
 off a tool result. `failure_type` is oracle/eval-only metadata used to score prediction accuracy
@@ -187,7 +274,7 @@ after the fact; feeding it to the Critic would invalidate the replanning researc
 
 ---
 
-## 6. Frontend
+## 9. Frontend
 
 Support Console (`dashboard/`) is a React 18 + TypeScript + Vite SPA. Two things distinguish it
 from a typical CRUD dashboard:

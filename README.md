@@ -1,6 +1,25 @@
-# Adaptive Multi-Agent Customer Support System
+# Enterprise AI Customer Support Platform
 
-A research system and production-track reference implementation for a **self-improving,
+Production-grade multi-agent customer support platform built with LangGraph, FastAPI, React, and
+advanced memory systems.
+
+## Highlights
+
+- Multi-Agent AI Architecture
+- LangGraph Orchestration
+- Enterprise Memory System
+- Policy Memory Research
+- FastAPI Backend
+- React Enterprise Dashboard
+- Production UI/UX
+- Accessibility Tested
+- Research Paper Included
+
+---
+
+Formally, the **Adaptive Multi-Agent Customer Support System** (the name used in `AGENTS.md`, the
+research paper, and its citation) — a research system and production-track reference
+implementation for a **self-improving,
 memory-augmented multi-agent customer support pipeline** — plus **Support Console**, a full
 enterprise operations dashboard for monitoring and interacting with it.
 
@@ -10,10 +29,14 @@ rate and replanning overhead compared to memoryless and static-ReAct baselines �
 (replaying past examples)? The target output is a workshop paper plus a production-track client
 system, and this repository contains both.
 
-> **Status:** Research track is experiment-complete for Contribution 1 (memory-augmented vs.
-> memoryless vs. static-ReAct) with paper-citable results; Contribution 2 (Policy Memory) is
-> implemented and instrumented but not yet fully evaluated. The production track (`src/`) is
-> fully implemented through Phase 5 of the enterprise roadmap. See [Roadmap](#roadmap).
+> **Status:** Research Track is experiment-complete for both contributions. **Contribution 1**
+> (memory-augmented vs. memoryless vs. static-ReAct) has paper-citable results. **Contribution 2**
+> (Policy Memory) is fully evaluated, including a controlled ablation that isolates retrieval
+> source as the only variable — the honest finding is a **null result**: no statistically
+> significant resolution-rate difference between policy-based and ticket-based memory once the
+> surrounding architecture is held constant (see [`paper/results.md`](paper/results.md) and
+> [`paper/discussion.md`](paper/discussion.md)). The Production Track (`src/`) is fully implemented
+> through Phase 5 of the enterprise roadmap. See [Roadmap & Future Work](#roadmap--future-work).
 
 ---
 
@@ -70,7 +93,7 @@ lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## Features
+## Key Features
 
 ### Multi-agent pipeline
 - **7 typed agents**: Intake, Planner, Executor, Critic/Replanner, Memory Manager, Response,
@@ -117,22 +140,21 @@ lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Tech Stack
 
-**Backend / Research**
-- Python 3.11+, [uv](https://github.com/astral-sh/uv) package manager
-- [LangGraph](https://github.com/langchain-ai/langgraph) — production agent orchestration
-- [FastAPI](https://fastapi.tiangolo.com/) + Uvicorn — HTTP API
-- [ChromaDB](https://www.trychroma.com/) — per-client vector memory store
-- [Pydantic v2](https://docs.pydantic.dev/) — every inter-agent and API payload
-- LLM providers: NVIDIA NIM (Llama 3.1 8B, planner/critic), local Ollama (Qwen2.5 3B,
-  intake/response), Gemini Flash (offline LLM-as-judge only)
-- OpenTelemetry (tracing/metrics), Stripe + Zendesk SDKs (real tool backends)
-- pytest, ruff
-
-**Frontend**
-- React 18 + TypeScript (strict) + Vite + Tailwind CSS v4
-- shadcn/ui (Radix primitives), TanStack Query + TanStack Table, React Hook Form + Zod
-- React Router v7, Recharts, [@xyflow/react](https://reactflow.dev/) (React Flow)
-- MSW (Mock Service Worker) for the documented mock service layer
+| Layer | Technology |
+|---|---|
+| Orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) `StateGraph` |
+| Backend API | [FastAPI](https://fastapi.tiangolo.com/) + Uvicorn, Python 3.11+, [uv](https://github.com/astral-sh/uv) |
+| Data contracts | [Pydantic v2](https://docs.pydantic.dev/) — every inter-agent and API payload |
+| LLM providers | NVIDIA NIM (Llama 3.1 8B — Planner/Critic), local Ollama (Qwen2.5 3B — Intake/Response), Gemini Flash (offline LLM-as-judge only) |
+| Memory / vector store | [ChromaDB](https://www.trychroma.com/), per-client isolated collections |
+| Real tool integrations | Stripe (CRM/orders/refunds), Zendesk Guide (KB search) |
+| Observability | OpenTelemetry (tracing + metrics), structured JSON logging |
+| Testing | pytest, ruff (backend); TypeScript strict mode, oxlint (frontend) |
+| CI/CD | GitHub Actions (`.github/workflows/`) — type-check/lint/build on the frontend, ruff/pytest on the backend |
+| Frontend framework | React 18 + TypeScript (strict) + Vite + Tailwind CSS v4 |
+| Frontend components | shadcn/ui (Radix primitives), TanStack Query + TanStack Table, React Hook Form + Zod |
+| Frontend routing / viz | React Router v7, Recharts, [@xyflow/react](https://reactflow.dev/) (React Flow) |
+| Frontend mocking | MSW (Mock Service Worker) — the documented mock service layer, environment-gated off in production builds |
 
 ---
 
@@ -241,10 +263,10 @@ matrices per platform, and production-build verification steps are in
 ## Folder Structure
 
 ```
-customer_support/
-├── src/                    # Production track — LangGraph pipeline, FastAPI, typed agents
-├── experiments/            # Research track — baselines, experiment driver, ablations
-├── memory/                 # Policy Memory (Contribution 2) — research-track only
+enterprise-ai-customer-support/
+├── src/                    # Production Track — LangGraph pipeline, FastAPI, typed agents
+├── experiments/            # Research Track — baselines, experiment driver, ablations
+├── memory/                 # Policy Memory (Contribution 2) — Research Track only
 ├── data/                   # Synthetic ticket dataset
 ├── scripts/                # Experiment runner, summary/analysis, dataset builder
 ├── tests/                  # pytest suite (per-agent, API, memory, DAG, telemetry, ...)
@@ -266,15 +288,37 @@ Full annotated structure: **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)**.
 
 ---
 
-## Roadmap
+## Roadmap & Future Work
 
-- [ ] Re-run chi-square significance test on the corrected research dataset before citing in the paper
-- [ ] Complete Contribution 2 (Policy Memory) full 200-ticket evaluation across all failure-rate tiers
+### Engineering roadmap
+
+- [ ] Resolve a flagged numeric discrepancy between `AGENTS.md` and `paper/results.md` for the
+  `memory_augmented` baseline at FR=0.3, then re-run the chi-square significance test before citing
+  final numbers in the paper
 - [ ] Add a LangGraph-based ReAct baseline as a reviewer-facing control (partial implementation exists)
 - [ ] Escalation Agent human-feedback loop (writes to Escalation Memory — not wired up yet)
-- [ ] Wire Policy Memory into the production pipeline (`ENTERPRISE_ARCHITECTURE.md` Phase 6)
+- [ ] Wire Policy Memory into the production pipeline (`ENTERPRISE_ARCHITECTURE.md` Phase 6) — now a
+  **lower-priority, gated** item given the null result below; see Future Work
 - [ ] Scale-out: containerize each agent as an independent service; swap Chroma → Qdrant at >1M vectors (Phase 7)
 - [ ] Move off free-tier NVIDIA NIM (40 req/min ceiling) to a paid/dedicated inference endpoint
+
+### Future work (research)
+
+Policy Memory's controlled ablation found no statistically significant advantage over ticket-based
+memory (see the Status note above and [`paper/discussion.md`](paper/discussion.md)). The
+highest-priority next steps, in order, per
+[`paper/future_work.md`](paper/future_work.md):
+
+1. **Larger sample size / repeated trials** — the ablation's confidence intervals are wide enough
+   that a real, smaller effect could exist undetected at n=200, single-run.
+2. **Mechanism-level comparison of retrieved plan quality**, not just outcome — directly test
+   whether Policy Memory's consistently farther retrieval distance causes worse suggested plans.
+3. **Investigate why both `v2_full` and Policy Memory underperform `memory_augmented` at FR=0.7** —
+   a new question raised by the ablation, suggesting the regression may be a property of the
+   broader v2 architecture rather than specific to Policy Memory.
+4. **Re-run all four baselines in one canonical environment** to remove the disclosed
+   Python-version/OS mismatch between the original three baselines and the `v2_full`/Policy Memory
+   runs (see [`paper/reproducibility.md`](paper/reproducibility.md)).
 
 See [AGENTS.md](AGENTS.md) for the full, detailed status log this summary is drawn from.
 
@@ -289,10 +333,30 @@ See [AGENTS.md](AGENTS.md) for the full, detailed status log this summary is dra
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, ground rules, coding conventions, PR process |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Annotated folder-by-folder map |
 | [PORTFOLIO_SUMMARY.md](PORTFOLIO_SUMMARY.md) | One-page summary for interviews/resume discussions |
-| [DEMO_SCRIPT.md](DEMO_SCRIPT.md) | 5-minute guided walkthrough of the dashboard |
+| [DEMO_SCRIPT.md](DEMO_SCRIPT.md) | 5- and 10-minute guided walkthroughs, plus common interview Q&A |
 | [dashboard/API_CONTRACT.md](dashboard/API_CONTRACT.md) | Every mocked endpoint's documented request/response shape |
 | [AGENTS.md](AGENTS.md) | Living project context and detailed status log |
 | [ENTERPRISE_ARCHITECTURE.md](ENTERPRISE_ARCHITECTURE.md) | Sequenced production-readiness roadmap |
+
+## Citation
+
+This repository's Research Track targets a workshop paper (`paper/final_paper.md`), not yet
+published or assigned a DOI/venue. If you reference this work before then, please cite the
+repository directly:
+
+```bibtex
+@misc{policy_memory_2026,
+  title  = {Policy Memory: An Ablation Study of Reusable Workflow Templates in
+            Memory-Augmented Agentic Customer Support},
+  author = {Busam, Likhith},
+  year   = {2026},
+  howpublished = {\url{https://github.com/LikhithBusam/enterprise-ai-customer-support}},
+  note   = {Unpublished workshop paper draft; repository is the canonical source until publication}
+}
+```
+
+This citation will be updated with formal venue/DOI details upon publication — see
+[`paper/references.md`](paper/references.md) for the full reference list this work builds on.
 
 ## License
 

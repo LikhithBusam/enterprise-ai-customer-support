@@ -4,7 +4,7 @@ Annotated map of the repository. See [ARCHITECTURE.md](ARCHITECTURE.md) for how 
 interact, not just where they live.
 
 ```
-customer_support/
+enterprise-ai-customer-support/
 │
 ├── src/                          # PRODUCTION TRACK — typed, tested, LangGraph-orchestrated
 │   ├── agents/                   # One run(TypedInput) -> TypedOutput function per agent

@@ -22,7 +22,10 @@ cp .env.example .env    # fill in your own keys
 cd dashboard && npm install
 ```
 
-Run the full check before opening a PR:
+## Testing
+
+Run the full check before opening a PR — this is exactly what CI (`.github/workflows/`) runs on
+every push and pull request, so a clean local run means a clean CI run:
 
 ```bash
 uv run pytest                 # backend tests
@@ -34,6 +37,10 @@ npx tsc -b                    # frontend type-check
 npm run lint                  # frontend lint (oxlint)
 npm run build                 # frontend production build
 ```
+
+`backend.yml` triggers on changes under `src/`, `experiments/`, `memory/`, `scripts/`, `tests/`,
+or the lockfiles; `frontend.yml` triggers on changes under `dashboard/`. See
+[DEPLOYMENT.md](DEPLOYMENT.md#github-actions) for the exact steps each workflow runs.
 
 ## Ground rules (non-negotiable, per AGENTS.md)
 
@@ -79,11 +86,15 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 
 ## Pull requests
 
+Opening a PR loads [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)
+automatically — fill it in fully, including which track your change touches and which of the
+Ground Rules checklist items apply. In addition:
+
 1. Keep PRs scoped to one concern — a baseline change, a dashboard feature, a doc update. This
    codebase's own history shows what happens when scope creeps (see the sprint-gated history in
    `AGENTS.md`'s status log); reviewers can't reason about a PR that mixes research-track and
    production-track changes.
-2. Run the full check list above before requesting review.
+2. Run the full check list from [Testing](#testing) above before requesting review.
 3. If your change touches `experiments/`, note which baseline(s) and failure-rate tier(s) you
    re-ran to confirm it, since results are the whole point of that half of the repo.
 4. If your change touches `src/`, confirm `tests/test_pipeline_integration.py` still passes — it
@@ -93,13 +104,15 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 
 ## Reporting issues
 
-Please include: which track (research/production/dashboard), reproduction steps, and — for
-research-track issues — the exact `run_experiment.py` invocation (baseline + failure rate) if
-relevant. Never include real API keys or `.env` contents in an issue.
+Use the templates under [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/) — a bug report or
+feature request form appears automatically when you open a new issue. Either way, please include:
+which track (research/production/dashboard), reproduction steps, and — for research-track issues —
+the exact `run_experiment.py` invocation (baseline + failure rate) if relevant. Never include real
+API keys or `.env` contents in an issue.
 
 ## Security
 
 If you find a real vulnerability (not a style nit), please open a private report rather than a
-public issue where practical. Do not commit real secrets in `.env.example` or anywhere else —
-see the note in [DEPLOYMENT.md](DEPLOYMENT.md) about an existing key that needs rotating before
-this repo goes public.
+public issue where practical. Do not commit real secrets in `.env.example` or anywhere else — see
+[DEPLOYMENT.md's Security section](DEPLOYMENT.md#security) for how this repo's own template is
+kept sanitized.

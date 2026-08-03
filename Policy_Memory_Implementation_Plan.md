@@ -3,11 +3,22 @@
 ## Status
 Contribution 1 (Failure-Category-Conditioned Critic) is frozen and must not be modified.
 
-Research-track implementation of this plan is done (see AGENTS.md's Current Status checklist and
-CLAUDE.md's Architecture section for the file-level breakdown). Not yet run: full 200-ticket
-experiments across the 3 failure-rate tiers, and the Evaluation section's comparison table below.
-Not yet started: production integration (`ENTERPRISE_ARCHITECTURE.md` Phase 6), gated on those
-results.
+Research-track implementation of this plan is done (see [AGENTS.md](AGENTS.md)'s Current Status
+checklist and [CLAUDE.md](CLAUDE.md)'s Architecture section for the file-level breakdown). **Note:**
+the actual implementation deliberately deviates from this plan's "New Files" section below —
+`memory/policy_memory.py` (not `src/memory/policy_memory.py`) and `experiments/context_fusion.py`
+(not `src/agents/context_fusion.py`), since this contribution isn't wired into production yet. See
+CLAUDE.md's Architecture section for why.
+
+The full 200-ticket evaluation across all 3 failure-rate tiers, plus a controlled `v2_full`
+ablation isolating retrieval source as the only variable, **is now complete**. Result: no
+statistically significant resolution-rate difference between Policy Memory and plain ticket-based
+retrieval at any failure rate — see [`paper/results.md`](paper/results.md) (Tables 8–11) and
+[`paper/discussion.md`](paper/discussion.md) for the full writeup, and this document's Evaluation
+section below for the metric list that was measured. Production integration
+(`ENTERPRISE_ARCHITECTURE.md` Phase 6) remains not started, and — given this null result — is now
+a lower-confidence path than originally framed; see `paper/future_work.md` for what would need to
+happen first.
 
 ## Goal
 Replace ticket-centric planning memories with Policy Memory that stores reusable execution knowledge rather than customer-specific examples.
