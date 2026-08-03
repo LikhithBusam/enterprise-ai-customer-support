@@ -147,8 +147,8 @@ lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 ### Clone
 
 ```bash
-git clone <your-repo-url>
-cd customer_support
+git clone https://github.com/LikhithBusam/enterprise-ai-customer-support.git
+cd enterprise-ai-customer-support
 ```
 
 ### Backend

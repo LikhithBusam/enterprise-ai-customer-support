@@ -119,6 +119,15 @@ customer_support/
 ├── web/                          # Unrelated Next.js marketing/landing page — NOT part of the
 │                                  # agent pipeline. Has its own AGENTS.md/CLAUDE.md. cd web && npm run dev
 │
+├── .github/
+│   ├── workflows/                   #   frontend.yml (tsc/lint/build), backend.yml (ruff/pytest)
+│   ├── ISSUE_TEMPLATE/              #   bug_report.md, feature_request.md, config.yml
+│   └── PULL_REQUEST_TEMPLATE.md
+│
+├── docs/
+│   ├── screenshots/                 #   empty by default — see README's Screenshots section
+│   └── architecture/                #   empty by default — for standalone diagram images, if added
+│
 ├── .claude/, .claude-plugin/     # Claude Code project configuration (agents, skills, hooks)
 ├── .env / .env.example           # backend environment variables (see DEPLOYMENT.md)
 ├── pyproject.toml / uv.lock      # backend dependencies (uv)
