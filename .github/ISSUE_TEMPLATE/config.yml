@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Project documentation
+    url: https://github.com/<your-org>/<your-repo>/blob/main/README.md
+    about: Please check the README and docs/ before opening an issue.
+  - name: Discussions
+    url: https://github.com/<your-org>/<your-repo>/discussions
+    about: Ask questions or discuss ideas here rather than in an issue.

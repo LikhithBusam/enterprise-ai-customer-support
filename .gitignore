@@ -1,0 +1,32 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
+data/chroma/
+data/*.jsonl
+.env
+.env.local
+.env.*.local
+*.egg-info/
+dist/
+build/
+.next/
+node_modules/
+coverage/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Local Claude Code runtime state (personal, machine-specific — not project config)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Ad-hoc debug/QA artifacts — regenerate, don't commit
+*.log
+.playwright-mcp/
+/*.png
+/*.jpg
+/*.jpeg
